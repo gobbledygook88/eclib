@@ -26,7 +26,6 @@
 
 #define USE_SPARSE 1
 #define ECLIB_INT_NUM_THREADS 8
-#define ECLIB_RECURSION_DIM_LIMIT 5821
 #include <eclib/logger.h>
 #include <eclib/xsplit.h>
 
@@ -422,6 +421,7 @@ void form_finder::find( ff_data &data ) {
 
   int dimold = h->dimoldpart(subeiglist);
 
+#if VERBOSE > 0
   stringstream subeiglist_ss;
   std::copy(subeiglist.begin(),subeiglist.end(),ostream_iterator<long>(subeiglist_ss," "));
 
@@ -430,16 +430,17 @@ void form_finder::find( ff_data &data ) {
            << "dimsofar=" << subdim
            << ", dimold=" << dimold
            << ", dimnew=" << subdim-dimold << "\n";
+#endif
  
   if( dimold == subdim ) {
-    data.setStatus( ALL_OLD );     // Set status of current node
+    data.setStatus( ALL_OLD );
     ECLOG(0) << "Abandoning a common eigenspace of dimension " << subdim
              << " which is a sum of oldclasses." << endl;
-    return;   // This branch of the recursion ends: all is old
+    return;
   }
 
   if( ( subdim == targetdim ) && ( depth > mindepth ) ) { 
-    data.setStatus( FOUND_NEW );   // Set status of current node
+    data.setStatus( FOUND_NEW );
     make_basis( data );
     store(data.bplus_,data.bminus_,subeiglist);
     return;
@@ -456,19 +457,19 @@ void form_finder::find( ff_data &data ) {
   }
 
   // Pass data node through to make_submat()
-  // NOTE originally called in go_down(), but relocated here since
-  // it only needs to be called once per node. 
   make_submat(data);
 
   // The recursive part:
   vector<long> t_eigs = h->eigrange(depth);
   vector<long>::const_iterator apvar = t_eigs.begin();
 
+#if VERBOSE > 0
   stringstream t_eigs_ss;
   std::copy(t_eigs.begin(),t_eigs.end(),ostream_iterator<long>(t_eigs_ss," "));
 
   ECLOG(0) << "Testing eigenvalues [ " << t_eigs_ss.str() 
            << "] at level " << (depth+1) << endl;
+#endif
 
   // Set children counter
   data.numChildren( t_eigs.size() );
@@ -485,16 +486,8 @@ void form_finder::find( ff_data &data ) {
     data.addChild( eig, *child );
 
 #ifdef ECLIB_MULTITHREAD
-    if( data.subdim_ > ECLIB_RECURSION_DIM_LIMIT ) {
-      // Post newly created child node to threadpool
-      pool.post< ff_data >( *child );
-    }
-    else {
-      // Parallel granularity control. Continue in serial.
-      go_down( data, eig, apvar==t_eigs.end() );
-      if( child -> subdim_ > 0 ) find( *child );
-      //if( child -> status_ != INTERNAL || child -> subdim_ == 0 ) go_up( *child );
-    }
+    // Post newly created child node to threadpool
+    pool.post< ff_data >( *child );
 #else   
     // Pass through current data node and new test eigenvalue to go_down()
     go_down( data, eig, apvar==t_eigs.end() );
@@ -513,7 +506,6 @@ void form_finder::find( ff_data &data ) {
 
 void form_finder::store(vec bp, vec bm, vector<long> eigs) {
 #ifdef ECLIB_MULTITHREAD
-  // Lock function
   boost::mutex::scoped_lock lock( store_lock );
 #endif
 
@@ -525,7 +517,6 @@ void form_finder::store(vec bp, vec bm, vector<long> eigs) {
   // Increment global counter
   gnfcount++;
 
-  // Inform about newform count
   ECLOG(0) << "Current newform subtotal count at " << gnfcount << endl;
 }
 
